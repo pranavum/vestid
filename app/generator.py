@@ -6,15 +6,9 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras import layers
 
-df = pd.read_csv("datasets/MSFT.csv")
-df = df[["Date", "Close"]]
-
 def str_to_datetime(str):
     split = str.split("-")
     return datetime.datetime(year=int(split[0]), month=int(split[1]), day=int(split[2]))
-
-df["Date"] = df["Date"].apply(str_to_datetime)
-df.index = df.pop("Date")
 
 def df_to_windowed_df(dataframe, first_date_str, last_date_str, n=3):
   first_date = str_to_datetime(first_date_str)
@@ -67,11 +61,6 @@ def df_to_windowed_df(dataframe, first_date_str, last_date_str, n=3):
 
   return ret_df
 
-windowed_df = df_to_windowed_df(df, 
-                                '2023-01-05', 
-                                '2023-12-29', 
-                                n=3)
-
 def windowed_df_to_date_X_y(windowed_dataframe):
   df_as_np = windowed_dataframe.to_numpy()
   dates = df_as_np[:, 0]
@@ -81,43 +70,41 @@ def windowed_df_to_date_X_y(windowed_dataframe):
 
   return dates, X.astype(np.float32), Y.astype(np.float32)
 
-dates, X, y = windowed_df_to_date_X_y(windowed_df)
+def generate_dataset(stock, inputs, days, start, end):
+    df = pd.read_csv(f"datasets/{stock}")
+    inputs = ["Date"] + inputs
+    df = df[inputs]
 
-q80 = int(len(dates) * .8)
-q90 = int(len(dates) * .9)
+    df["Date"] = df["Date"].apply(str_to_datetime)
+    df.index = df.pop("Date")
 
-dates_train, X_train, y_train = dates[:q80], X[:q80], y[:q80]
-dates_val, X_val, y_val = dates[q80:q90], X[q80:q90], y[q80:q90]
-dates_test, X_test, y_test = dates[q90:], X[q90:], y[q90:]
+    windowed_df = df_to_windowed_df(df, 
+                                start, 
+                                end, 
+                                n=days)
 
-model = Sequential([layers.Input((3, 1)),
+    dates, X, y = windowed_df_to_date_X_y(windowed_df)
+
+    q80 = int(len(dates) * .8)
+    q90 = int(len(dates) * .9)
+
+    dates_train, X_train, y_train = dates[:q80], X[:q80], y[:q80]
+    dates_val, X_val, y_val = dates[q80:q90], X[q80:q90], y[q80:q90]
+    dates_test, X_test, y_test = dates[q90:], X[q90:], y[q90:]
+
+    return dates_train, X_train, y_train, dates_val, X_val, y_val, dates_test, X_test, y_test
+
+def generate_model(stock, inputs, days, start, end):
+    dates_train, X_train, y_train, dates_val, X_val, y_val, dates_test, X_test, y_test = generate_dataset(stock, inputs, days, start, end)
+    model = Sequential([layers.Input((days, len(inputs))),
                     layers.LSTM(64),
                     layers.Dense(32, activation='relu'),
                     layers.Dense(32, activation='relu'),
                     layers.Dense(1)])
-
-model.compile(loss='mse',
+    model.compile(loss='mse',
               optimizer=Adam(learning_rate=0.001),
               metrics=['mean_absolute_error'])
 
-model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=100)
+    model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=100)
 
-train_predictions = model.predict(X_train).flatten()
-val_predictions = model.predict(X_val).flatten()
-test_predictions = model.predict(X_test).flatten()
-
-
-
-plt.plot(dates_train, train_predictions)
-plt.plot(dates_train, y_train)
-plt.plot(dates_val, val_predictions)
-plt.plot(dates_val, y_val)
-plt.plot(dates_test, test_predictions)
-plt.plot(dates_test, y_test)
-plt.legend(['Training Predictions', 
-            'Training Observations',
-            'Validation Predictions', 
-            'Validation Observations',
-            'Testing Predictions', 
-            'Testing Observations'])
-plt.show()
+    return model

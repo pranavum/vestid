@@ -16,7 +16,7 @@ def login():
             login_user(user, remember=True)
             return redirect(url_for('url.home'))
         else: flash('Incorrect Email or Password', category='error')
-    return render_template("login.html", user=current_user, logged_in=current_user.is_authenticated)
+    return render_template("login.html", user=current_user)
 
 @auth.route('/logout')
 @login_required
@@ -33,12 +33,14 @@ def signup():
         password2 = request.form.get('password2')
 
         user = User.query.filter_by(email=email).first()
-        if user: flash("Email already in use", category='error')
-        elif password != password2: flash("Passwords don't match", category='error')
+        if user:
+            flash("Email already in use", category='error')
+        elif password != password2:
+            flash("Passwords don't match", category='error')
         else:
-            new_user = User(name=name, email=email, password=generate_password_hash(password, method='sha256'))
+            new_user = User(name=name, email=email, password=generate_password_hash(password, method='pbkdf2:sha256'))
             db.session.add(new_user)
             db.session.commit()
             login_user(new_user, remember=True)
             return redirect(url_for('url.home'))
-    return render_template("signup.html", user=current_user, logged_in=current_user.is_authenticated)
+    return render_template("signup.html", user=current_user)
